@@ -1,2 +1,2 @@
-create table Deployment;
-create table User;
+create table Deployment
+create table User
