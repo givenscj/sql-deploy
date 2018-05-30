@@ -1,5 +1,5 @@
-create table Deployment
-GO
-
-create table User
+create table [User]
+(
+	UserId UNIQUEIDENTIFIER
+)
 GO
