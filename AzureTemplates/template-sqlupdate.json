@@ -1,0 +1,209 @@
+﻿{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+	"adminUsername": {	  
+      "type": "string"
+    },
+	"adminPassword": {	  
+      "type": "securestring"
+    },
+	"url": {
+      "type": "string"
+    },
+    "servername": {
+      "type": "string"
+    },
+    "databasename": {
+      "type": "string"
+    },    
+	"username": {
+      "type": "string"
+    },    
+	"password": {
+      "type": "securestring"
+    }
+  },
+  "variables": {  
+	"storageAccountName": "deploysqlvmstorage",  
+  },
+  "resources": [
+  {
+      "type": "Microsoft.Network/networkSecurityGroups",
+      "name": "WebTrafficOnly",
+      "apiVersion": "2017-06-01",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "securityRules": [ ]
+      },
+      "dependsOn": [ ]
+    },
+  {
+      "type": "Microsoft.Network/virtualNetworks",
+      "name": "buildVNet",
+      "apiVersion": "2017-08-01",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "addressSpace": {
+          "addressPrefixes": [
+            "10.2.0.0/16"
+          ]
+        },
+        "subnets": [
+          {
+            "name": "default",
+            "properties": {
+              "addressPrefix": "10.2.0.0/24"
+            }
+          }
+        ]
+      }
+    },
+  {
+      "name": "build-1-ip",
+      "type": "Microsoft.Network/publicIpAddresses",
+      "apiVersion": "2017-08-01",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "publicIPAddressVersion": "IPv4",
+        "publicIpAllocationMethod": "Dynamic"
+      }
+    },
+  {
+      "name": "build-1-nic",
+      "type": "Microsoft.Network/networkInterfaces",
+      "apiVersion": "2016-09-01",
+      "location": "[resourceGroup().location]",
+      "dependsOn": [
+        "[concat('Microsoft.Network/publicIpAddresses/', 'build-1-ip')]",
+        "[concat('Microsoft.Network/virtualNetworks/', 'buildVNet')]" ,
+		"[concat('Microsoft.Network/networkSecurityGroups/', 'WebTrafficOnly')]"
+      ],
+      "properties": {
+        "ipConfigurations": [
+          {
+            "name": "ipconfig1",
+            "properties": {
+              "subnet": {
+                "id": "[resourceId('Microsoft.Network/virtualNetworks/subnets', 'buildVNet', 'default')]"
+              },
+              "privateIPAllocationMethod": "Dynamic",
+              "publicIpAddress": {
+                "id": "[resourceId(resourceGroup().name,'Microsoft.Network/publicIpAddresses', 'build-1-ip')]"
+              }
+            }
+          }
+        ],
+        "networkSecurityGroup": {          
+			"id": "[resourceId(resourceGroup().name, 'Microsoft.Network/networkSecurityGroups', 'WebTrafficOnly')]"
+        }
+      }
+    },
+  {
+      "type": "Microsoft.Storage/storageAccounts",
+      "sku": {
+        "name": "Standard_LRS"
+      },
+      "kind": "Storage",
+      "name": "[variables('storageAccountName')]",
+      "apiVersion": "2017-10-01",
+      "location": "[resourceGroup().location]",
+      "properties": {
+        "supportsHttpsTrafficOnly": "false",
+        "encryption": {
+          "services": {
+            "blob": {
+              "enabled": true
+            },
+            "file": {
+              "enabled": true
+            }
+          },
+          "keySource": "Microsoft.Storage"
+        }
+      },
+      "dependsOn": [ ]
+    },
+  {
+      "name": "build-1",
+      "type": "Microsoft.Compute/virtualMachines",
+      "apiVersion": "2016-04-30-preview",
+      "location": "[resourceGroup().location]",
+      "dependsOn": [
+        "[concat('Microsoft.Network/networkInterfaces/', 'build-1-nic')]",
+        "[concat('Microsoft.Storage/storageAccounts/', variables('storageAccountName'))]"
+      ],
+	  "resources": [
+		{
+			"apiVersion": "2015-06-15",
+			"type": "extensions",
+			"name": "deploy-sql",
+			"location": "[resourceGroup().location]",
+			"dependsOn": [
+				"build-1"
+			],
+			"tags": {
+			"displayName": "deploy-sql"
+			},
+			"properties": {
+			"publisher": "Microsoft.Compute",
+			"type": "CustomScriptExtension",
+			"typeHandlerVersion": "1.9",
+			"autoUpgradeMinorVersion": true,
+			"settings": {
+				"fileUris": [
+				"https://raw.githubusercontent.com/givenscj/sql-deploy/master/DeploySql.ps1"
+				]
+			},
+			"protectedSettings": {
+				"commandToExecute": "[concat('powershell -ExecutionPolicy Unrestricted -File DeploySQL.ps1 -sqlserver ', parameters('servername'), ' -database ', parameters('databasename'), ' -username ', parameters('username'), ' -password ', parameters('password'), ' -url ', parameters('url'))]"
+			}
+			}
+		}
+	  ],
+      "properties": {
+        "osProfile": {
+          "computerName": "build-1",
+          "adminUsername": "[parameters('adminUsername')]",
+          "adminPassword": "[parameters('adminPassword')]",
+          "windowsConfiguration": {
+            "provisionVmAgent": "true"
+          }
+        },
+        "hardwareProfile": {
+          "vmSize": "Standard_DS1_v2"
+        },
+        "storageProfile": {
+          "imageReference": {
+            "publisher": "MicrosoftWindowsServer",
+            "offer": "WindowsServer",
+            "sku": "2016-Datacenter",
+            "version": "latest"
+          },
+          "osDisk": {
+            "createOption": "fromImage",
+            "managedDisk": {
+              "storageAccountType": "Standard_LRS"
+            }
+          },
+          "dataDisks": [ ]
+        },
+        "networkProfile": {
+          "networkInterfaces": [
+            {
+              "id": "[resourceId('Microsoft.Network/networkInterfaces', 'build-1-nic')]"
+            }
+          ]
+        },
+        "diagnosticsProfile": {
+          "bootDiagnostics": {
+            "enabled": true,
+            "storageUri": "[reference(resourceId(resourceGroup().name, 'Microsoft.Storage/storageAccounts', variables('storageAccountName')), '2015-06-15').primaryEndpoints['blob']]"
+          }
+        }
+      }
+    }  
+  ],
+  "outputs": {    
+  }
+}

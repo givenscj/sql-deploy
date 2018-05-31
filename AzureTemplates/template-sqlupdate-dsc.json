@@ -1,0 +1,50 @@
+﻿{
+  "$schema": "http://schema.management.azure.com/schemas/2015-01-01/deploymentTemplate.json#",
+  "contentVersion": "1.0.0.0",
+  "parameters": {
+	"url": {
+      "type": "string"
+    },
+    "servername": {
+      "type": "string"
+    },
+    "databasename": {
+      "type": "string"
+    },    
+	"username": {
+      "type": "string"
+    },    
+	"password": {
+      "type": "securestring"
+    }
+  },
+  "variables": {    
+  },
+  "resources": [  
+    {
+      "type": "Microsoft.Compute/virtualMachines/extensions",
+      "name": "[concat('build-1','/', 'dscExtension')]",
+      "apiVersion": "2015-05-01-preview",
+      "location": "[resourceGroup().location]",
+      "dependsOn": [
+        "[concat('Microsoft.Compute/virtualMachines/', 'build-1')]"
+      ],
+      "properties": {
+        "publisher": "Microsoft.Powershell",
+        "type": "DSC",
+        "typeHandlerVersion": "2.19",
+        "autoUpgradeMinorVersion": true,
+        "settings": {
+          "ModulesUrl": "https://github.com/givenscj/mcw-azure-security/blob/master/Scripts/Install_IIS.zip?raw=true",
+          "ConfigurationFunction": "Install_IIS.ps1\\InstallIIS",
+          "Properties": {
+            "MachineName": "build-1"
+          }
+        },
+        "protectedSettings": null
+      }
+    }    
+  ],
+  "outputs": {    
+  }
+}
